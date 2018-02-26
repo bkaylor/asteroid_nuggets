@@ -1,12 +1,15 @@
 #include <stdio.h>
+#include <math.h>
 #include <SDL.h>
+
+#include "vec2.h"
 
 typedef struct Player_Struct
 {
     int x;
     int y;
-    int facing;
-    int direction;
+    float facing;
+    float direction;
     int speed;
 } Player;
 
@@ -50,7 +53,11 @@ void render(Game_State *game_state, SDL_Renderer *renderer)
     player_rect.w = 100;
     player_rect.h = 100;
 
-    SDL_RenderCopy(renderer, player_texture, NULL, &player_rect); 
+    SDL_Point center = {50, 50};
+
+    SDL_RendererFlip flip = SDL_FLIP_NONE;
+
+    SDL_RenderCopyEx(renderer, player_texture, NULL, &player_rect, game_state->player->facing, &center, flip); 
     SDL_RenderPresent(renderer);
 }
 
@@ -58,27 +65,33 @@ bool update(const Uint8 *keyboard, Game_State *game_state)
 {
     if (keyboard[SDL_SCANCODE_UP])
     {
-        game_state->player->y -= 3;
+        game_state->player->speed += 1;
     }
 
     if (keyboard[SDL_SCANCODE_LEFT])
     {
-        game_state->player->x -= 3;
+        game_state->player->facing -= 2.0f;
     }
 
     if (keyboard[SDL_SCANCODE_RIGHT])
     {
-        game_state->player->x += 3;
+        game_state->player->facing += 2.0f;
     }
 
     if (keyboard[SDL_SCANCODE_DOWN])
     {
-        game_state->player->y += 3;
+        game_state->player->speed -= 1;
     }
 
     if (keyboard[SDL_SCANCODE_SPACE])
     {
+        game_state->player->speed = 0;
+        game_state->player->x= 0;
+        game_state->player->y= 0;
     }
+
+    game_state->player->x += game_state->player->speed * cos(game_state->player->facing); 
+    game_state->player->y += game_state->player->speed * sin(game_state->player->facing); 
 
     if (keyboard[SDL_SCANCODE_ESCAPE])
     {
@@ -98,6 +111,9 @@ void init_player(Player *player)
 {
     player->x = 0;
     player->y = 0;
+    player->facing = 0.0f;
+    player->direction = 0.0f;
+    player->speed = 0;
 }
 
 int main(int argc, char *argv[])
