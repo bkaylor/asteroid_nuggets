@@ -6,16 +6,16 @@
 
 typedef struct Player_Struct
 {
-    int x;
-    int y;
-    float facing;
-    float direction;
-    int speed;
+    vec2 position;
+    vec2 facing;
+    vec2 velocity;
 } Player;
 
 typedef struct Game_State_Struct
 {
     Player *player;
+    int width;
+    int height;
 } Game_State;
 
 char *player_bmp_path = "../assets/player.bmp";
@@ -48,8 +48,8 @@ void render(Game_State *game_state, SDL_Renderer *renderer)
     SDL_RenderCopy(renderer, background_texture, NULL, NULL);
 
     SDL_Rect player_rect;
-    player_rect.x = game_state->player->x;
-    player_rect.y = game_state->player->y;
+    player_rect.x = game_state->player->position.x - 50;
+    player_rect.y = game_state->player->position.y - 50;
     player_rect.w = 100;
     player_rect.h = 100;
 
@@ -57,41 +57,76 @@ void render(Game_State *game_state, SDL_Renderer *renderer)
 
     SDL_RendererFlip flip = SDL_FLIP_NONE;
 
-    SDL_RenderCopyEx(renderer, player_texture, NULL, &player_rect, game_state->player->facing, &center, flip); 
+    SDL_RenderCopyEx(renderer, player_texture, NULL, &player_rect, 
+                     vec2_angle_degrees(game_state->player->facing) - 90.0f, &center, flip); 
     SDL_RenderPresent(renderer);
 }
 
-bool update(const Uint8 *keyboard, Game_State *game_state)
+bool update(const Uint8 *keyboard, Game_State *game_state, SDL_Renderer *renderer)
 {
+    Player *player = game_state->player;
+    const float THRUST = 0.05f;
+
+    SDL_GetRendererOutputSize(renderer, &game_state->width, &game_state->height);
+
+    // Get acceleration vector.
+    vec2 acceleration = vec2_normalize(player->facing);
+    acceleration = vec2_scalar_multiply(player->facing, THRUST);
+
     if (keyboard[SDL_SCANCODE_UP])
     {
-        game_state->player->speed += 1;
+        player->velocity = vec2_add(player->velocity, acceleration); 
     }
 
     if (keyboard[SDL_SCANCODE_LEFT])
     {
-        game_state->player->facing -= 2.0f;
+        player->facing = vec2_rotate(player->facing, -0.001f);
     }
 
     if (keyboard[SDL_SCANCODE_RIGHT])
     {
-        game_state->player->facing += 2.0f;
+        player->facing = vec2_rotate(player->facing, 0.001f);
     }
 
     if (keyboard[SDL_SCANCODE_DOWN])
     {
-        game_state->player->speed -= 1;
+        player->velocity = vec2_subtract(player->velocity, acceleration); 
+    }
+
+    if (keyboard[SDL_SCANCODE_S])
+    {
+        player->velocity = vec2_make(0.0f, 0.0f);
     }
 
     if (keyboard[SDL_SCANCODE_SPACE])
     {
-        game_state->player->speed = 0;
-        game_state->player->x= 0;
-        game_state->player->y= 0;
+        player->position = vec2_make(0.0f, 0.0f);
+        player->facing = vec2_make(1.0f, 0.0f);
+        player->velocity = vec2_make(0.0f, 0.0f);
     }
 
-    game_state->player->x += game_state->player->speed * cos(game_state->player->facing); 
-    game_state->player->y += game_state->player->speed * sin(game_state->player->facing); 
+    player->position = vec2_add(player->position, player->velocity);
+
+    // Do screen wrap stuff.
+    if (player->position.x < 0)
+    {
+        player->position.x = game_state->width;
+    }
+
+    if (player->position.y < 0)
+    {
+        player->position.y = game_state->height;
+    }
+
+    if (player->position.x > game_state->width)
+    {
+        player->position.x = 0;
+    }
+
+    if (player->position.y > game_state->height)
+    {
+        player->position.y = 0;
+    }
 
     if (keyboard[SDL_SCANCODE_ESCAPE])
     {
@@ -109,11 +144,9 @@ void init_game_state(Game_State *game_state)
 
 void init_player(Player *player)
 {
-    player->x = 0;
-    player->y = 0;
-    player->facing = 0.0f;
-    player->direction = 0.0f;
-    player->speed = 0;
+    player->position = vec2_make(0.0f, 0.0f);
+    player->facing = vec2_make(1.0f, 0.0f);
+    player->velocity = vec2_make(0.0f, 0.0f);
 }
 
 int main(int argc, char *argv[])
@@ -142,6 +175,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    printf("Starting sdl_asteroids!\n");
+
     Game_State game_state; 
     init_game_state(&game_state);
 
@@ -159,7 +194,7 @@ int main(int argc, char *argv[])
         keyboard = SDL_GetKeyboardState(NULL);
 
         // Update.
-        quit = update(keyboard, &game_state);
+        quit = update(keyboard, &game_state, renderer);
         
         // Render.
         render(&game_state, renderer);
