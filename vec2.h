@@ -64,7 +64,7 @@ float vec2_angle_degrees(vec2 a)
 
 vec2 vec2_rotate(vec2 a, float b)
 {
-    float theta = b * 180 / M_PI;
+    float theta = b * 180.0 / M_PI;
 
     float cs = cos(theta);
     float sn = sin(theta);
