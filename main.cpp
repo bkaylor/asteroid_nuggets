@@ -12,11 +12,21 @@ typedef enum Player_State_Enum
     Burning
 } Player_State;
 
+typedef struct Laser_Struct
+{
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+} Laser;
+
 typedef struct Player_Struct
 {
     vec2 position;
     vec2 facing;
     vec2 velocity;
+    bool is_shooting;
+    Laser laser;
     int score;
     Player_State state;
 } Player;
@@ -108,6 +118,15 @@ void render(Game_State *game_state, SDL_Renderer *renderer)
     SDL_RenderCopyEx(renderer, goal_texture, NULL, &goal_rect, 
                      vec2_angle_degrees(game_state->goal->facing), &center, flip); 
 
+    // Draw laser.
+    Player *player = game_state->player;
+    if (game_state->player->is_shooting)
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+        SDL_RenderDrawLine(renderer, player->laser.x0, player->laser.y0,
+                           player->laser.x1, player->laser.y1);
+    }
+
     // Draw player.
     SDL_RenderCopyEx(renderer, player_current_sprite, NULL, &player_rect, 
                      vec2_angle_degrees(game_state->player->facing) - 90.0f, &center, flip); 
@@ -158,6 +177,15 @@ bool update(const Uint8 *keyboard, Game_State *game_state, SDL_Renderer *rendere
 
     if (keyboard[SDL_SCANCODE_SPACE])
     {
+        player->is_shooting = true;
+    }
+    else
+    {
+        player->is_shooting = false;
+    }
+
+    if (keyboard[SDL_SCANCODE_X])
+    {
         player->position = vec2_make(0.0f, 0.0f);
         player->facing = vec2_make(1.0f, 0.0f);
         player->velocity = vec2_make(0.0f, 0.0f);
@@ -187,8 +215,34 @@ bool update(const Uint8 *keyboard, Game_State *game_state, SDL_Renderer *rendere
     }
 
     // Check collisions
+    // Player is touching a nugget.
     if (fabs(player->position.x - goal->position.x) < 50.0f && 
         fabs(player->position.y - goal->position.y) < 50.0f)
+    {
+        player->score++;
+        goal->position = vec2_make( (float)(rand() % game_state->width), (float)(rand() % game_state->height) );
+        goal->velocity = vec2_make(0.0f, 0.0f);
+        printf("Score: %d\n", player->score);
+    }
+
+    // Player is shooting a nugget.
+    // TODO(bkaylor): Just store this on the goal struct.
+    const SDL_Rect goal_rect = {
+        (int)game_state->goal->position.x - 50,
+        (int)game_state->goal->position.y - 50,
+        100,
+        100
+    };
+
+    player->laser.x0 = (int)player->position.x;
+    player->laser.y0 = (int)player->position.y;
+
+    vec2 player_laser_endpoint = vec2_add(player->position, vec2_scalar_multiply(player->facing, 400.0f));
+    player->laser.x1 = (int)player_laser_endpoint.x;
+    player->laser.y1 = (int)player_laser_endpoint.y;
+
+    if (player->is_shooting && SDL_IntersectRectAndLine(&goal_rect, &player->laser.x0, &player->laser.y0,
+                                                        &player->laser.x1, &player->laser.y1))
     {
         player->score++;
         goal->position = vec2_make( (float)(rand() % game_state->width), (float)(rand() % game_state->height) );
@@ -218,6 +272,11 @@ void init_player(Player *player)
     player->position = vec2_make(0.0f, 0.0f);
     player->facing = vec2_make(1.0f, 0.0f);
     player->velocity = vec2_make(0.0f, 0.0f);
+    player->is_shooting = false;
+    player->laser = {
+        0, 0,
+        0, 0
+    };
     player->score = 0;
 }
 
