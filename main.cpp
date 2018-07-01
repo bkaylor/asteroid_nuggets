@@ -1,3 +1,11 @@
+/* TODO(bkaylor): 
+ * [ ] ALT + ENTER
+ * [ ] ALT + F4
+ * [ ] ALT + TAB should be smoother?
+ * [ ] Audio device switching
+ * [ ] Print score
+ * [ ] Print fps
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -38,12 +46,27 @@ typedef struct Goal_Struct
     vec2 velocity;
 } Goal;
 
+typedef struct Sound_Struct
+{
+    char *path;
+    Uint8 *buffer;
+    Uint32 length;
+} Sound;
+
+typedef struct Audio_Struct
+{
+    SDL_AudioSpec spec;
+    SDL_AudioDeviceID device_id;
+    Sound *goal_sound;
+} Audio;
+
 typedef struct Game_State_Struct
 {
     Player *player;
     Goal *goal;
     int width;
     int height;
+    Audio *audio;
 } Game_State;
 
 char *player_bmp_path = "../assets/player.bmp";
@@ -56,6 +79,7 @@ SDL_Texture *player_burning_texture;
 SDL_Texture *background_texture;
 SDL_Texture *goal_texture;
 
+void player_got_nugget(Player *, Goal *, Game_State *, Audio *);
 void init_game_state(Game_State *game_state);
 void init_player(Player *player);
 void init_goal(Goal *goal);
@@ -79,6 +103,19 @@ void load_bmps(SDL_Renderer *renderer)
     SDL_FreeSurface(player_burning_bmp);
     SDL_FreeSurface(goal_bmp);
     SDL_FreeSurface(background_bmp);
+}
+
+void init_and_load_sounds(Audio *audio)
+{
+    audio->goal_sound = (Sound *)calloc(1, sizeof(Sound));
+    audio->goal_sound->path = "../assets/pickup.wav";
+
+    SDL_LoadWAV(audio->goal_sound->path, 
+                &audio->spec, 
+                &audio->goal_sound->buffer,
+                &audio->goal_sound->length);
+
+    audio->device_id = SDL_OpenAudioDevice(NULL, 0, &audio->spec, NULL, 0);
 }
 
 void render(Game_State *game_state, SDL_Renderer *renderer)
@@ -138,6 +175,7 @@ bool update(const Uint8 *keyboard, Game_State *game_state, SDL_Renderer *rendere
 {
     Player *player = game_state->player;
     Goal *goal = game_state->goal;
+    Audio *audio = game_state->audio;
 
     const float THRUST = 0.03f;
 
@@ -219,14 +257,11 @@ bool update(const Uint8 *keyboard, Game_State *game_state, SDL_Renderer *rendere
     if (fabs(player->position.x - goal->position.x) < 50.0f && 
         fabs(player->position.y - goal->position.y) < 50.0f)
     {
-        player->score++;
-        goal->position = vec2_make( (float)(rand() % game_state->width), (float)(rand() % game_state->height) );
-        goal->velocity = vec2_make(0.0f, 0.0f);
-        printf("Score: %d\n", player->score);
+        player_got_nugget(player, goal, game_state, audio);
     }
 
     // Player is shooting a nugget.
-    // TODO(bkaylor): Just store this on the goal struct.
+    // TODO(bkaylor): Just store this on the goal struct ... ? 
     const SDL_Rect goal_rect = {
         (int)game_state->goal->position.x - 50,
         (int)game_state->goal->position.y - 50,
@@ -244,10 +279,7 @@ bool update(const Uint8 *keyboard, Game_State *game_state, SDL_Renderer *rendere
     if (player->is_shooting && SDL_IntersectRectAndLine(&goal_rect, &player->laser.x0, &player->laser.y0,
                                                         &player->laser.x1, &player->laser.y1))
     {
-        player->score++;
-        goal->position = vec2_make( (float)(rand() % game_state->width), (float)(rand() % game_state->height) );
-        goal->velocity = vec2_make(0.0f, 0.0f);
-        printf("Score: %d\n", player->score);
+        player_got_nugget(player, goal, game_state, audio);
     }
 
     if (keyboard[SDL_SCANCODE_ESCAPE])
@@ -258,6 +290,18 @@ bool update(const Uint8 *keyboard, Game_State *game_state, SDL_Renderer *rendere
     return false;
 }
 
+void player_got_nugget(Player *player, Goal *goal, Game_State *game_state, Audio *audio)
+{
+    player->score++;
+    goal->position = vec2_make( (float)(rand() % game_state->width), (float)(rand() % game_state->height) );
+    goal->velocity = vec2_make(0.0f, 0.0f);
+
+    // Play sound.
+    SDL_QueueAudio(audio->device_id, audio->goal_sound->buffer, audio->goal_sound->length);
+    SDL_PauseAudioDevice(audio->device_id, 0);
+    printf("Score: %d\n", player->score);
+}
+
 void init_game_state(Game_State *game_state)
 {
     game_state->player = (Player *)calloc(1, sizeof(Player));
@@ -265,6 +309,9 @@ void init_game_state(Game_State *game_state)
     
     game_state->goal = (Goal *)calloc(1, sizeof(Goal));
     init_goal(game_state->goal);
+
+    game_state->audio = (Audio *)calloc(1, sizeof(Audio));
+    init_and_load_sounds(game_state->audio);
 }
 
 void init_player(Player *player)
@@ -291,7 +338,13 @@ int main(int argc, char *argv[])
 {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
-        printf("SDL_Init error: %s\n", SDL_GetError());
+        printf("SDL_Init video error: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    if (SDL_Init(SDL_INIT_AUDIO) != 0)
+    {
+        printf("SDL_Init audio error: %s\n", SDL_GetError());
         return 1;
     }
 
@@ -299,7 +352,9 @@ int main(int argc, char *argv[])
     SDL_Window *window = SDL_CreateWindow("Hello, sailor!", 
                                           SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
                                           640, 480, 
-                                          SDL_WINDOW_BORDERLESS | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_INPUT_GRABBED);
+                                          SDL_WINDOW_BORDERLESS | 
+                                          SDL_WINDOW_FULLSCREEN | 
+                                          SDL_WINDOW_INPUT_GRABBED);
     if (!window)
     {
         printf("SDL_CreateWindow error: %s\n", SDL_GetError());
